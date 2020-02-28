@@ -15,6 +15,7 @@ void UFixedWingMovementComponent::ApplyAirfoil(FName Socket, float Deflection, F
 	auto Rotation = Primitive->GetSocketRotation(Socket);
 	auto LinearVelocity = Primitive->GetPhysicsLinearVelocityAtPoint(Location,NAME_None);// Socket);
 
+
 	//UE_LOG(LogTemp, Warning, TEXT("[%s] Primitive: %s | LV: %s"), *Socket.ToString(), *AActor::GetDebugName(Primitive->GetOwner()), *LinearVelocity.ToString());
 	
 	auto AltitudeMeters = Location.Z / 100.f; // for air density
@@ -49,10 +50,20 @@ void UFixedWingMovementComponent::ApplyAirfoil(FName Socket, float Deflection, F
 	// lift
 	auto CoefficientOfLift = (Airfoil.LiftCurve->GetFloatValue(Alpha) + ForceDeflection);
 	auto StreamSpeedSquared = FMath::Pow(StreamSpeed, 2);
-	auto ForceLift = CoefficientOfLift * StreamSpeedSquared * AirDensity * Airfoil.Area * NewtonScale * StreamUp; 
+	auto ForceLift = CoefficientOfLift * StreamSpeedSquared * AirDensity * Airfoil.Area * -NewtonScale * StreamUp; //todo does this making this newton scale negative as well fix ?
 
+	// check distance from ground
+	FHitResult HitRes;
+	auto InGroundEffect = GWorld->LineTraceSingleByChannel(HitRes, Location, Location-(UpVector*1000.f),ECollisionChannel::ECC_WorldStatic);
+
+	if(InGroundEffect) {
+		VisualizeForces(Location, HitRes.Location, 3, DeltaTime);
+	}
+
+	auto GroundEffectDragReduction =InGroundEffect ? 0.65f : 1.0f; // reduce induced drag by 65% when in ground effect
+	
 	// induced drag
-	auto ForceInducedDrag = (FMath::Pow(CoefficientOfLift, 2) * StreamSpeedSquared * AirDensity) / (PI * Airfoil.AspectRatio * Airfoil.Efficiency) * -NewtonScale * StreamUp;
+	auto ForceInducedDrag = GroundEffectDragReduction * (FMath::Pow(CoefficientOfLift, 2) * StreamSpeedSquared * AirDensity) / (PI * Airfoil.AspectRatio * Airfoil.Efficiency) * -NewtonScale * StreamUp;
 	// efficiency between .7 - 1.0 typical
 
 	// form / deflection drag
